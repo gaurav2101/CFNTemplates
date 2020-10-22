@@ -1,0 +1,623 @@
+{
+    "AWSTemplateFormatVersion" : "2010-09-09",
+        "Description" : "Cloudformation template to create AWS Elasticsearch Service",
+        "Parameters" : {
+            "DomainName" : {
+                "Description" : "Elasticsearch Domain Name",
+                "Type" : "String"
+            },
+            "EBSEnabled" : {
+                "Description" : "Specifies whether Amazon EBS volumes are attached to data nodes in the Amazon ES domain",
+                "Type" : "String"
+            },
+            "EBSVolumeType" : {
+                "Description" : "The type of the EBS volume for each data node",
+                "Type" : "String",
+                "Default" : "gp2"
+            },        
+            "ElasticsearchVersion" : {
+                "Description" : "Elasticsearch Version",
+                "Type" : "String",
+                "Default" : "7.7",
+                "AllowedValues": [
+                    "7.7",
+                    "7.4",
+                    "7.1"
+                ]
+            },
+            "ClusterDataInstanceCount" : {
+                "Description" : "The number of data nodes",
+                "Type" : "Number"
+            },
+            "ClusterMasterInstanceCount" : {
+                "Description" : "The number of master nodes",
+                "Type" : "Number"
+            },
+            "Environment" : {
+                "Description" : "Environment Type",
+                "Type": "String",
+                "Default" : "dev",
+                "AllowedValues": [
+                    "dev",
+                    "prod",
+                    "stage",
+                    "qa"
+                ],
+                "ConstraintDescription" : "must specify prod, dev, stage or QA."
+            },
+            "CognitoIdentityPoolId" : {
+                "Description" : "AWS Cognito Identity Pool ID",
+                "Type" : "String"
+            },
+            "CognitoIAMRoleArn" : {
+                "Description" : "Cognito IAM Role ARN",
+                "Type" : "String"
+            },
+            "CognitoUserPoolId" : {
+                "Description" : "Cognito User Pool Id",
+                "Type" : "String"
+            },
+            "KMSKeyId" : {
+                "Description" : "KMS Key Id",
+                "Type" : "String"
+            },
+            "SubnetCluster" : {
+                "Description" : "Subnets List",
+                "Type" : "List<AWS::EC2::Subnet::Id>"
+            },
+            "VPCId" : {
+                "Description" : "VPC Id",
+                "Type" : "AWS::EC2::VPC::Id"
+            }                                 
+        },
+        "Conditions": {
+            "DevResources" : { "Fn::Equals" : [{"Ref" : "Environment"}, "dev"] },
+            "QAResources" : { "Fn::Equals" : [{"Ref" : "Environment"}, "qa"] },
+            "StageResources" : { "Fn::Equals" : [{"Ref" : "Environment"}, "stage"] },
+            "ProdResources" : { "Fn::Equals" : [{"Ref" : "Environment"}, "prod"] },         
+            "CreateDevorQAResources" : { "Fn::Or" : [{ "Condition" : "DevResources" }, { "Condition" : "QAResources"}]},
+            "CreateProdorStageAResources" : { "Fn::Or" : [{ "Condition" : "ProdResources" }, { "Condition" : "StageResources"}]}
+        },    
+        "Resources" : {
+            "ElasticSearchDomain" : {
+                "Type" : "AWS::Elasticsearch::Domain",
+                "Properties": {
+                    "DomainName" : { "Ref" : "DomainName" },
+                    "ElasticsearchVersion" : { "Ref" : "ElasticsearchVersion" },
+                    "ElasticsearchClusterConfig" : {
+                        "InstanceCount" : { "Ref" : "ClusterDataInstanceCount" },
+                        "InstanceType" : 
+                        { "Fn::If" : [
+                            "CreateDevorQAResources",
+                            "t2.medium.elasticsearch",
+                        { "Fn::If" : [
+                            "CreateProdorStageAResources",
+                            "m5.large.elasticsearch",
+                            { "Ref" : "AWS::NoValue" }
+                           ]}
+                          ]},
+                        "DedicatedMasterCount" :
+                        { "Fn::If" : [
+                            "CreateDevorQAResources",
+                            { "Ref" : "AWS::NoValue" },
+                        {  "Fn::If" : [
+                            "CreateProdorStageAResources",
+                            { "Ref" : "ClusterMasterInstanceCount" },
+                            { "Ref" : "AWS::NoValue" }
+                           ]}    
+                        ]},
+                        "DedicatedMasterType" : 
+                        { "Fn::If" : [
+                            "CreateDevorQAResources",
+                            { "Ref" : "AWS::NoValue" },
+                        { "Fn::If" : [
+                            "CreateProdorStageAResources",
+                            "m5.large.elasticsearch",
+                            { "Ref" : "AWS::NoValue" }
+                           ]}    
+                        ]},
+                        "DedicatedMasterEnabled" : 
+                        { "Fn::If" : [
+                            "CreateDevorQAResources",
+                            "false",
+                        { "Fn::If" : [
+                            "CreateProdorStageAResources",
+                            "true", "false"
+                           ]}   
+                        ]},
+                        "ZoneAwarenessEnabled" : "true"                   
+                    },
+                    "AccessPolicies" : {
+                        "Version" : "2012-10-17",
+                        "Statement" : [
+                           {
+                              "Effect" : "Allow",
+                              "Principal" : {
+                                 "AWS" : "*"
+                              },
+                              "Action" : "es:*",
+                              "Resource" : { "Fn::Sub" : "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${DomainName}/*" }
+                           }
+                        ]
+                     },
+                    "VPCOptions" : {
+                        "SecurityGroupIds" : [{ "Ref" : "ESSecurityGroup"}],
+                        "SubnetIds" : [{ "Fn::Select": [ "0", { "Ref": "SubnetCluster" }]}, { "Fn::Select": [ "1", { "Ref": "SubnetCluster" }]}]
+    
+                    },
+                    "DomainEndpointOptions" : {
+                        "EnforceHTTPS" : "true",
+                        "TLSSecurityPolicy" : "Policy-Min-TLS-1-2-2019-07"
+    
+                    },
+                    "NodeToNodeEncryptionOptions" : {
+                        "Enabled" : "true"
+                    },
+                    "EncryptionAtRestOptions" : {   
+                        "Fn::If" : [
+                            "CreateDevorQAResources",
+                            { "Ref": "AWS::NoValue" },
+                            { "Fn::If" : [
+                                        "CreateProdorStageAResources",
+                                        {
+                                            "Enabled" : "true",
+                                            "KmsKeyId" : { "Fn::Sub" : "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/${KMSKeyId}"}
+                                        },                                    
+                                        { "Ref": "AWS::NoValue" }
+                                        ]
+                            }
+                        ]   
+                     },
+                    "EBSOptions" : {
+                        "EBSEnabled" : { "Ref" : "EBSEnabled" },
+                        "VolumeSize" : 
+                        { "Fn::If" : [
+                            "CreateDevorQAResources",
+                             10,
+                        { "Fn::If" : [
+                            "CreateProdorStageAResources",
+                             100,
+                             { "Ref" : "AWS::NoValue" }
+                           ]}    
+                        ]},
+                        "VolumeType" : { "Ref" : "EBSVolumeType" }
+                    },
+                    "CognitoOptions" : {
+                        "Enabled" :"true",
+                        "IdentityPoolId" : { "Fn::Sub" : "${AWS::Region}:${CognitoIdentityPoolId}" },
+                        "RoleArn" : { "Fn::Sub" : "arn:aws:iam::${AWS::AccountId}:role/${CognitoIAMRoleArn}"},
+                        "UserPoolId" : { "Fn::Sub" : "${AWS::Region}_${CognitoUserPoolId}" }
+    
+                    },
+                    "AdvancedOptions" : {
+                        "rest.action.multi.allow_explicit_index": "true"
+                    },
+                    "SnapshotOptions" : {
+                        "AutomatedSnapshotStartHour":"0"
+                    },
+                    "Tags" : [ 
+                        {"Key": "Environment", "Value": { "Ref": "Environment" }}
+                    ]
+                }
+            },
+            "SearchLogsLogGroup" : {
+                "Type" :"AWS::Logs::LogGroup",
+                "Properties" :{
+                    "LogGroupName" : { "Fn::Join": [ "-", [{ "Ref": "DomainName" },"search","slow","logs" ]]}
+                }
+            },
+            "IndexLogsLogGroup" : {
+                "Type" :"AWS::Logs::LogGroup",
+                "Properties" :{
+                    "LogGroupName" : { "Fn::Join": [ "-", [{ "Ref": "DomainName" },"index","slow","logs" ]]}
+                }            
+            },
+            "ESSecurityGroup" : {
+                "Type" :"AWS::EC2::SecurityGroup",
+                "Properties" :{
+                    "VpcId" : {"Ref" : "VPCId"},
+                    "GroupDescription" : "ES Cluster SG",
+                    "GroupName" : { "Fn::Join": [ "-", [{ "Ref": "DomainName" },"sg" ]]},
+                    "SecurityGroupIngress" : [{
+                        "IpProtocol" : "tcp",
+                        "FromPort" : 80,
+                        "ToPort" : 80,
+                        "CidrIp" : "0.0.0.0/0"
+                     }],
+                    "SecurityGroupEgress" : [{
+                       "IpProtocol" : "tcp",
+                       "FromPort" : 80,
+                       "ToPort" : 80,
+                       "CidrIp" : "0.0.0.0/0"
+                    }],
+                    "Tags" : [ 
+                        {"Key": "Environment", "Value": { "Ref": "Environment"	}}
+                    ]
+                }            
+            },
+            "ESAlertSNSTopic" : {
+                "Type" : "AWS::SNS::Topic",
+                "Properties" : {
+                    "Tags" : [ 
+                        {"Key": "Environment", "Value": { "Ref": "Environment"	}},
+                        {"Key" : "Name", "Value" : { "Fn::Join": [ "-", [{	"Ref": "DomainName" },"ESAlertsTopic" ]]}}
+                    ]
+                  }
+              },          
+            "ClusterStatusYellowAlarm" : {
+                "Type" : "AWS::CloudWatch::Alarm",
+                   "Properties" : {
+                        "AlarmActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "AlarmDescription" : "At least one replica shard is not allocated to a node",
+                        "ComparisonOperator" : "GreaterThanThreshold",
+                        "Dimensions" :[
+                            {
+                                "Name": "ClientId",
+                                "Value": {
+                                    "Ref": "AWS::AccountId"
+                                }
+                            },
+                            {
+                                "Name": "DomainName",
+                                "Value": {
+                                    "Ref": "ElasticSearchDomain"
+                                }
+                            }                    
+                         ],
+                        "EvaluationPeriods" : 1,
+                        "MetricName" : "ClusterStatus.yellow",
+                        "Namespace" : "AWS/ES",
+                        "OKActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "Period" : 60,
+                        "Statistic" : "Maximum",
+                        "Threshold" : 0
+                    }
+            },
+            "ClusterStatusRedAlarm" : {
+                "Type" : "AWS::CloudWatch::Alarm",
+                   "Properties" : {
+                        "AlarmActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "AlarmDescription" : "At least one primary shard and its replicas are not allocated to a node",
+                        "ComparisonOperator" : "GreaterThanThreshold",
+                        "Dimensions" :[
+                            {
+                                "Name": "ClientId",
+                                "Value": {
+                                    "Ref": "AWS::AccountId"
+                                }
+                            },
+                            {
+                                "Name": "DomainName",
+                                "Value": {
+                                    "Ref": "ElasticSearchDomain"
+                                }
+                            }                    
+                         ],
+                        "EvaluationPeriods" : 1,
+                        "MetricName" : "ClusterStatus.red",
+                        "Namespace" : "AWS/ES",
+                        "OKActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "Period" : 60,
+                        "Statistic" : "Maximum",
+                        "Threshold" : 0
+                    }
+            },
+            "ClusterFreeStorageSpaceAlarm" : {
+                "Type" : "AWS::CloudWatch::Alarm",
+                   "Properties" : {
+                        "AlarmActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "AlarmDescription" : "Cluster is running out of storage space",
+                        "ComparisonOperator" : "LessThanThreshold",
+                        "Dimensions" :[
+                            {
+                                "Name": "ClientId",
+                                "Value": {
+                                    "Ref": "AWS::AccountId"
+                                }
+                            },
+                            {
+                                "Name": "DomainName",
+                                "Value": {
+                                    "Ref": "ElasticSearchDomain"
+                                }
+                            }                    
+                         ],
+                        "EvaluationPeriods" : 1,
+                        "MetricName" : "FreeStorageSpace",
+                        "Namespace" : "AWS/ES",
+                        "OKActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "Period" : 60,
+                        "Statistic" : "Minimum",
+                        "Threshold" : 2500
+                    }
+            },
+            "ClusterIndexWritesBlockedAlarm" : {
+                "Type" : "AWS::CloudWatch::Alarm",
+                   "Properties" : {
+                        "AlarmActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "AlarmDescription" : "Cluster is blocking incoming write requests",
+                        "ComparisonOperator" : "GreaterThanThreshold",
+                        "Dimensions" :[
+                            {
+                                "Name": "ClientId",
+                                "Value": {
+                                    "Ref": "AWS::AccountId"
+                                }
+                            },
+                            {
+                                "Name": "DomainName",
+                                "Value": {
+                                    "Ref": "ElasticSearchDomain"
+                                }
+                            }                    
+                         ],
+                        "EvaluationPeriods" : 1,
+                        "MetricName" : "ClusterIndexWritesBlocked",
+                        "Namespace" : "AWS/ES",
+                        "OKActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "Period" : 300,
+                        "Statistic" : "Maximum",
+                        "Threshold" : 0
+                    }
+            },
+            "ClusterNodeAlarm" : {
+                "Type" : "AWS::CloudWatch::Alarm",
+                   "Properties" : {
+                        "AlarmActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "AlarmDescription" : "At least one node in cluster has been unreachable for one day.",
+                        "ComparisonOperator" : "LessThanThreshold",
+                        "Dimensions" :[
+                            {
+                                "Name": "ClientId",
+                                "Value": {
+                                    "Ref": "AWS::AccountId"
+                                }
+                            },
+                            {
+                                "Name": "DomainName",
+                                "Value": {
+                                    "Ref": "ElasticSearchDomain"
+                                }
+                            }                    
+                         ],
+                        "EvaluationPeriods" : 1,
+                        "MetricName" : "Nodes",
+                        "Namespace" : "AWS/ES",
+                        "OKActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "Period" : 60,
+                        "Statistic" : "Minimum",
+                        "Threshold" : 1
+                    }
+            },
+            "ClusterAutomatedSnapshotFailureAlarm" : {
+                "Type" : "AWS::CloudWatch::Alarm",
+                   "Properties" : {
+                        "AlarmActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "AlarmDescription" : "No automated snapshot was taken for the domain.",
+                        "ComparisonOperator" : "GreaterThanThreshold",
+                        "Dimensions" :[
+                            {
+                                "Name": "ClientId",
+                                "Value": {
+                                    "Ref": "AWS::AccountId"
+                                }
+                            },
+                            {
+                                "Name": "DomainName",
+                                "Value": {
+                                    "Ref": "ElasticSearchDomain"
+                                }
+                            }                    
+                         ],
+                        "EvaluationPeriods" : 1,
+                        "MetricName" : "AutomatedSnapshotFailure",
+                        "Namespace" : "AWS/ES",
+                        "OKActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "Period" : 60,
+                        "Statistic" : "Maximum",
+                        "Threshold" : 0
+                    }
+            },
+            "ClusterCPUUtilizationAlarm" : {
+                "Type" : "AWS::CloudWatch::Alarm",
+                   "Properties" : {
+                        "AlarmActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "AlarmDescription" : "Average CPU utilization over last 10 minutes too high",
+                        "ComparisonOperator" : "GreaterThanThreshold",
+                        "Dimensions" :[
+                            {
+                                "Name": "ClientId",
+                                "Value": {
+                                    "Ref": "AWS::AccountId"
+                                }
+                            },
+                            {
+                                "Name": "DomainName",
+                                "Value": {
+                                    "Ref": "ElasticSearchDomain"
+                                }
+                            }                    
+                         ],
+                        "EvaluationPeriods" : 1,
+                        "MetricName" : "CPUUtilization",
+                        "Namespace" : "AWS/ES",
+                        "OKActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "Period" : 900,
+                        "Statistic" : "Average",
+                        "Threshold" : 80
+                    }
+            },
+            "ClusterJVMMemoryPressureAlarm" : {
+                "Type" : "AWS::CloudWatch::Alarm",
+                   "Properties" : {
+                        "AlarmActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "AlarmDescription" : "Average JVM memory pressure last 5 minutes too high",
+                        "ComparisonOperator" : "GreaterThanThreshold",
+                        "Dimensions" :[
+                            {
+                                "Name": "ClientId",
+                                "Value": {
+                                    "Ref": "AWS::AccountId"
+                                }
+                            },
+                            {
+                                "Name": "DomainName",
+                                "Value": {
+                                    "Ref": "ElasticSearchDomain"
+                                }
+                            }                    
+                         ],
+                        "EvaluationPeriods" : 1,
+                        "MetricName" : "JVMMemoryPressure",
+                        "Namespace" : "AWS/ES",
+                        "OKActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "Period" : 300,
+                        "Statistic" : "Average",
+                        "Threshold" : 80
+                    }
+            },
+            "ClusterMasterCPUUtilizationAlarm" : {
+                "Condition" : "CreateProdorStageAResources",
+                "Type" : "AWS::CloudWatch::Alarm",
+                   "Properties" : {
+                        "AlarmActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "AlarmDescription" : "Average CPU utilization of master node over last 15 minutes too high",
+                        "ComparisonOperator" : "GreaterThanThreshold",
+                        "Dimensions" :[
+                            {
+                                "Name": "ClientId",
+                                "Value": {
+                                    "Ref": "AWS::AccountId"
+                                }
+                            },
+                            {
+                                "Name": "DomainName",
+                                "Value": {
+                                    "Ref": "ElasticSearchDomain"
+                                }
+                            }                    
+                         ],
+                        "EvaluationPeriods" : 1,
+                        "MetricName" : "MasterCPUUtilization",
+                        "Namespace" : "AWS/ES",
+                        "OKActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "Period" : 900,
+                        "Statistic" : "Average",
+                        "Threshold" : 80
+                    }
+            },
+            "ClusterMasterJVMMemoryPressureAlarm" : {
+                "Condition" : "CreateProdorStageAResources",
+                "Type" : "AWS::CloudWatch::Alarm",
+                   "Properties" : {
+                        "AlarmActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "AlarmDescription" : "Average JVM memory on master node pressure last 5 minutes too high",
+                        "ComparisonOperator" : "GreaterThanThreshold",
+                        "Dimensions" :[
+                            {
+                                "Name": "ClientId",
+                                "Value": {
+                                    "Ref": "AWS::AccountId"
+                                }
+                            },
+                            {
+                                "Name": "DomainName",
+                                "Value": {
+                                    "Ref": "ElasticSearchDomain"
+                                }
+                            }                    
+                         ],
+                        "EvaluationPeriods" : 1,
+                        "MetricName" : "MasterJVMMemoryPressure",
+                        "Namespace" : "AWS/ES",
+                        "OKActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "Period" : 300,
+                        "Statistic" : "Average",
+                        "Threshold" : 80
+                    }
+            },
+            "ClusterKMSKeyErrorAlarm" : {
+                "Condition" : "CreateProdorStageAResources",
+                "Type" : "AWS::CloudWatch::Alarm",
+                   "Properties" : {
+                        "AlarmActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "AlarmDescription" : "The KMS encryption key that is used to encrypt data at rest in your domain is disabled",
+                        "ComparisonOperator" : "GreaterThanThreshold",
+                        "Dimensions" :[
+                            {
+                                "Name": "ClientId",
+                                "Value": {
+                                    "Ref": "AWS::AccountId"
+                                }
+                            },
+                            {
+                                "Name": "DomainName",
+                                "Value": {
+                                    "Ref": "ElasticSearchDomain"
+                                }
+                            }                    
+                         ],
+                        "EvaluationPeriods" : 1,
+                        "MetricName" : "KMSKeyError",
+                        "Namespace" : "AWS/ES",
+                        "OKActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "Period" : 60,
+                        "Statistic" : "Maximum",
+                        "Threshold" : 0
+                    }
+            },
+            "ClusterKMSKeyInaccessibleAlarm" : {
+                "Condition" : "CreateProdorStageAResources",
+                "Type" : "AWS::CloudWatch::Alarm",
+                   "Properties" : {
+                        "AlarmActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "AlarmDescription" : "The KMS encryption key that is used to encrypt data at rest in your domain has been deleted or has revoked its grants to Amazon ES",
+                        "ComparisonOperator" : "GreaterThanThreshold",
+                        "Dimensions" :[
+                            {
+                                "Name": "ClientId",
+                                "Value": {
+                                    "Ref": "AWS::AccountId"
+                                }
+                            },
+                            {
+                                "Name": "DomainName",
+                                "Value": {
+                                    "Ref": "ElasticSearchDomain"
+                                }
+                            }                    
+                         ],
+                        "EvaluationPeriods" : 1,
+                        "MetricName" : "KMSKeyInaccessible",
+                        "Namespace" : "AWS/ES",
+                        "OKActions" : [{ "Ref" : "ESAlertSNSTopic" }],
+                        "Period" : 60,
+                        "Statistic" : "Maximum",
+                        "Threshold" : 0
+                    }
+            }    
+            },
+        "Outputs": {
+            "DomainArn": {
+                "Value": {
+                  "Fn::GetAtt": [
+                    "ElasticSearchDomain",
+                    "DomainArn"
+                  ]
+                }
+              },
+              "DomainEndpoint": {
+                "Value": {
+                  "Fn::GetAtt": [
+                    "ElasticSearchDomain",
+                    "DomainEndpoint"
+                  ]
+                }
+              },
+              "SecurityGroupId": {
+                "Value": {
+                  "Ref": "ESSecurityGroup"
+                }
+            }          
+        }
+    }
