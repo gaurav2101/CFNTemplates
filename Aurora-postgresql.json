@@ -1,0 +1,192 @@
+{
+    "AWSTemplateFormatVersion" : "2010-09-09",  
+    "Description" : "Cloudformation template to create PostgreSQL RDS Instance",
+    "Parameters" : {
+      "DatabaseName": {
+        "Description" : "PostgreSQL database name",
+        "Type": "String"
+      },
+      "DBUsername": {
+        "NoEcho": "true",
+        "Description" : "Username for PostgreSQL database access",
+        "Type": "AWS::SSM::Parameter::Value<String>"
+      },
+      "DBPassword": {
+        "NoEcho": "true",
+        "Description" : "Password for PostgreSQL database access",
+        "Type": "AWS::SSM::Parameter::Value<String>"
+      },
+      "DBInstanceClass" : {
+        "Description" : "Database instance class",
+        "Type" : "String"
+      },
+      "BackupRetentionPeriod" : {
+        "Description" : "Database Retention Period",
+        "Type" : "Number"
+      },
+      "DBClusterIdentifier": {
+        "Description" : "DB Cluster Identifier",
+        "Type": "String"
+      },
+      "DBInstanceIdentifier": {
+        "Description" : "DB Instance Identifier",
+        "Type": "String"
+      },
+      "DBPort": {
+        "Description" : "PostgreSQL database Port",
+        "Type": "Number"
+      },
+      "DBEngine": {
+        "Description" : "PostgreSQL database Engine",
+        "Type": "String"
+      },
+      "DBEngineMode": {
+        "Description" : "PostgreSQL database Engine Mode",
+        "Type": "String"
+      },
+      "DBEngineVersion": {
+        "Description" : "PostgreSQL database Engine Version",
+        "Type": "String"
+      },
+      "DBSubnetGroup": {
+        "Description" : "PostgreSQL database Subnet Group",
+        "Type": "String"
+      },
+      "KMSKeyId": {
+        "Description" : "KMS Key ID",
+        "Type": "String"
+      },
+      "Product" : {
+        "Description" : "Product",
+        "Type" : "String"
+      },
+      "Project" : {
+        "Description" : "Project",
+        "Type" : "String"
+      },      
+      "Purpose" : {
+        "Description" : "Purpose",
+        "Type" : "String"
+      },
+      "ApplicationOwner" : {
+        "Description" : "ApplicationOwner",
+        "Type" : "String"
+      },
+      "ProductOwner" : {
+        "Description" : "ProductOwner",
+        "Type" : "String"
+      },      
+      "Account" : {
+        "Description" : "Account",
+        "Type" : "String"
+      },
+      "Environment" : {
+        "Description" : "Environment Type",
+        "Type": "String",
+        "AllowedValues": [
+            "dev",
+            "prod",
+            "stage",
+            "qa"
+        ],
+        "ConstraintDescription" : "must specify prod, dev, stage or QA."
+      },
+      "SecurityGroup" : {
+        "Description" : "VPC Security Groups",
+        "Type" : "AWS::EC2::SecurityGroup::Id"
+      }
+    },
+  
+    "Resources" : {
+      "RDSDBCluster" : {
+          "Type" : "AWS::RDS::DBCluster",
+          "Properties" : {
+              "BackupRetentionPeriod" : { "Ref" : "BackupRetentionPeriod" },
+              "DatabaseName" : { "Ref" : "DatabaseName" },
+              "DBClusterIdentifier" : { "Ref" : "DBClusterIdentifier" },
+              "DBSubnetGroupName" : { "Ref" : "DBSubnetGroup" },
+              "DBClusterParameterGroupName" : { "Ref" : "DBClusterParameterGroup" },
+              "Engine" : { "Ref" : "DBEngine" },
+              "EngineMode" : { "Ref" : "DBEngineMode" },
+              "EngineVersion" : { "Ref" : "DBEngineVersion" },
+              "KmsKeyId" : { "Ref" : "KMSKeyId" },
+              "MasterUsername" : { "Ref" : "DBUsername" },
+              "MasterUserPassword" : { "Ref" : "DBPassword" },
+              "Port" : { "Ref" : "DBPort" },
+              "StorageEncrypted" : "True",
+              "VpcSecurityGroupIds" : [{ "Ref" : "SecurityGroup" }],
+              "Tags" : [ 
+                {"Key": "Environment", "Value": { "Ref": "Environment" }},
+                {"Key" : "Product", "Value" : { "Ref" : "Product" }},
+                {"Key" : "Name", "Value" : { "Ref" : "DBClusterIdentifier" }},
+                {"Key" : "Purpose", "Value" : { "Ref" : "Purpose" }},
+                {"Key" : "ApplicationOwner", "Value" : { "Ref" : "ApplicationOwner" }},
+                {"Key" : "Project", "Value" : { "Ref" : "Project" }},
+                {"Key" : "Account", "Value" : { "Ref" : "Account" }},
+                {"Key" : "ProductOwner", "Value" : { "Ref" : "ProductOwner" }}                
+              ]
+          }
+      },
+      "RDSDBInstance" : {
+        "Type" : "AWS::RDS::DBInstance",
+        "Properties" : {
+            "AutoMinorVersionUpgrade" : "True",
+            "DBClusterIdentifier" : { "Ref" : "RDSDBCluster" },
+            "DBInstanceClass" : { "Ref" : "DBInstanceClass" },
+            "DBInstanceIdentifier" : { "Ref" : "DBInstanceIdentifier" },
+            "DBParameterGroupName" : { "Ref" : "DBParameterGroup" },
+            "DBSubnetGroupName" : { "Ref" : "DBSubnetGroup" },
+            "Engine" : { "Ref" : "DBEngine" },
+            "Tags" : [ 
+              {"Key": "Environment", "Value": { "Ref": "Environment" }},
+              {"Key" : "Product", "Value" : { "Ref" : "Product" }},
+              {"Key" : "Name", "Value" : { "Ref" : "DBClusterIdentifier" }},
+              {"Key" : "Purpose", "Value" : { "Ref" : "Purpose" }},
+              {"Key" : "ApplicationOwner", "Value" : { "Ref" : "ApplicationOwner" }},
+              {"Key" : "Project", "Value" : { "Ref" : "Project" }},
+              {"Key" : "Account", "Value" : { "Ref" : "Account" }},
+              {"Key" : "ProductOwner", "Value" : { "Ref" : "ProductOwner" }}                
+            ]
+          }
+      },
+      "DBClusterParameterGroup": {
+        "Type": "AWS::RDS::DBClusterParameterGroup",
+        "Properties": {
+            "Description": "PostgreSQL Aurora Cluster Parameter Group",
+            "Family": "aurora-postgresql10",
+            "Parameters" :{
+               "timezone" : "UTC"
+            },
+            "Tags" : [ 
+              {"Key": "Environment", "Value": { "Ref": "Environment" }},
+              {"Key" : "Product", "Value" : { "Ref" : "Product" }},
+              {"Key" : "Name", "Value" : { "Ref" : "DBClusterIdentifier" }},
+              {"Key" : "Purpose", "Value" : { "Ref" : "Purpose" }},
+              {"Key" : "ApplicationOwner", "Value" : { "Ref" : "ApplicationOwner" }},
+              {"Key" : "Project", "Value" : { "Ref" : "Project" }},
+              {"Key" : "Account", "Value" : { "Ref" : "Account" }},
+              {"Key" : "ProductOwner", "Value" : { "Ref" : "ProductOwner" }}                
+            ]            
+         }
+      },
+      "DBParameterGroup": {
+        "Type": "AWS::RDS::DBParameterGroup",
+        "Properties": {
+           "Description": "PostgreSQL Aurora DB Parameter Group",
+           "Family": "aurora-postgresql10",
+           "Tags" : [ 
+             {"Key": "Environment", "Value": { "Ref": "Environment" }},
+             {"Key" : "Product", "Value" : { "Ref" : "Product" }},
+             {"Key" : "Name", "Value" : { "Ref" : "DBClusterIdentifier" }},
+             {"Key" : "Purpose", "Value" : { "Ref" : "Purpose" }},
+             {"Key" : "ApplicationOwner", "Value" : { "Ref" : "ApplicationOwner" }},
+             {"Key" : "Project", "Value" : { "Ref" : "Project" }},
+             {"Key" : "Account", "Value" : { "Ref" : "Account" }},
+             {"Key" : "ProductOwner", "Value" : { "Ref" : "ProductOwner" }}                
+           ]
+        }
+      }
+    }, 
+    "Outputs" : {
+    }
+}
