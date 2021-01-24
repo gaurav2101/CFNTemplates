@@ -13,10 +13,6 @@ pipeline{
           description: 'Environment for this build'
           )
     }
-
-  environment {
-    dev_creds = "*********"
-  }
   stages{
 
     stage("Deploy on Dev"){
@@ -31,8 +27,8 @@ pipeline{
       steps{
         timeout(time: 2400, unit: 'SECONDS'){
             echo "Deploy Aurora PostgreSQL Cluster on Dev Env"
-            withAWS(role:'iam-role', roleAccount:'***********', roleSessionName: 'CFN-dev-deployment-session', region:'eu-west-1') {
-            cfnUpdate(stack:"dev-aurora-postgresql-cfn", file:"aurora-postgresql-data-anomalies/deployments/aurora-postgresql-data-anomalies.json", paramsFile:"aurora-postgresql-data-anomalies/deployments/parameter.${params.environment}.json", timeoutInMinutes:40)  
+            withAWS(role:'cfnrole', roleAccount:'947344745710', roleSessionName: 'CFN-dev-deployment-session', region:'us-east-1') {
+            cfnUpdate(stack:"dev-test-cfn", file:"test.json", paramsFile:"testpram.json", timeoutInMinutes:40)  
           }
       }
      }
